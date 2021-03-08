@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+
+import 'firebase_message_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,19 +35,39 @@ class MessageHandler extends StatefulWidget {
 }
 
 class _MessageHandlerState extends State<MessageHandler> {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  // final FirebaseFirestore _db = FirebaseFirestore.instance;
+  // FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  FirebaseMessageHandler _fmh = FirebaseMessageHandler();
   String permissionStatus = ' ';
   Future<RemoteMessage> clickedMessage;
+  Future<RemoteMessage> onlineMessage;
 
   @override
   void initState() {
     super.initState();
-    permissionStatus = _setNotificationPermission().toString();
-    _saveDeviceoken();
+    //Set notification settings in iOS. Always set in Android
+    permissionStatus =
+        FirebaseMessageHandler.setNotificationPermission().toString();
+    //Get the device token and save it in Firebase store
+    FirebaseMessageHandler.saveDeviceToken();
 
-    clickedMessage = handleInitialMessage();
+    //Handling messages received while the app has been terminated
+    clickedMessage = FirebaseMessageHandler.handleInitialMessage();
+    clickedMessage.then((message) {
+      if (clickedMessage != null) {
+        final snackBar = SnackBar(
+          // content: Text( clickedMessage.notification.title),
+          content: Text(message.notification.title),
+          action: SnackBarAction(
+            label: 'Yay!',
+            onPressed: () => null,
+          ),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(snackBar);
+      }
+    });
 
+    //Handling messages received while the app in active on the screen
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print('Got a message whilst in the foreground!');
       print('Message data: ${message.data}');
@@ -54,7 +75,6 @@ class _MessageHandlerState extends State<MessageHandler> {
       if (message.notification != null) {
         print('Message also contained a notification: ${message.notification}');
       }
-
       final snackBar = SnackBar(
         content: Text(message.notification.title),
         action: SnackBarAction(
@@ -65,6 +85,7 @@ class _MessageHandlerState extends State<MessageHandler> {
       ScaffoldMessenger.of(context).showSnackBar(snackBar);
     });
 
+    //Handling messages received while the app is in background but not terminated
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       final snackBar = SnackBar(
         content: Text(message.notification.title),
@@ -75,53 +96,6 @@ class _MessageHandlerState extends State<MessageHandler> {
       );
       ScaffoldMessenger.of(context).showSnackBar(snackBar);
     });
-  }
-
-  Future<String> _setNotificationPermission() async {
-    NotificationSettings settings = await _fcm.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
-    print(
-        'User granted permission: ${settings.authorizationStatus.toString()}');
-    return settings.authorizationStatus.toString();
-  }
-
-  Future<RemoteMessage> handleInitialMessage() async {
-    RemoteMessage initialMessage =
-        await FirebaseMessaging.instance.getInitialMessage();
-    if (initialMessage != null) {
-      final snackBar = SnackBar(
-        content: Text(initialMessage.notification.title),
-        action: SnackBarAction(
-          label: 'Yay!',
-          onPressed: () => null,
-        ),
-      );
-      ScaffoldMessenger.of(context).showSnackBar(snackBar);
-    }
-    return initialMessage;
-  }
-
-  _saveDeviceoken() async {
-    String userId = 'ishanh';
-    String fcmToken = await _fcm.getToken();
-
-    if (fcmToken != null) {
-      var tokenRef = _db
-          .collection('users')
-          .doc(userId)
-          .collection('tokens')
-          .doc(fcmToken);
-
-      await tokenRef.set({'token': fcmToken});
-      print('========================================Set the token $fcmToken');
-    }
   }
 
   @override
